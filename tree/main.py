@@ -18,6 +18,7 @@ def main():
     doc = '''
 Usage:
     lt [--color=<when>] [--max-depth=<depth>] [-aABFhlR] [<dir>]
+
 Options: 
     <dir>                   Directory to read from 
     --color=<when>          Colorize the output, can be 'never', 'auto' or 'always' [default: always]
