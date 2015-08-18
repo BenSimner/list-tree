@@ -17,7 +17,7 @@ from collections import namedtuple
 def main():
     doc = '''
 Usage:
-    lt [--color=<when>] [--max-depth=<depth>] [-aABFhlR] [<dir>]
+    lt [-aABFhlR --color=<when> --max-depth=<depth>] [<dir>]
 
 Options: 
     <dir>                   Directory to read from 
