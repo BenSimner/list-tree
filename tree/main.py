@@ -80,7 +80,7 @@ def _main(**argv):
 def print_long_list_fmt(lines):
     # generate prefixes
     prefix_strs = []
-    max_lens = [0]*7
+    max_lens = [0]*6
     for struct in lines:
         if struct.path:
             prefixs = []
@@ -94,17 +94,17 @@ def print_long_list_fmt(lines):
             prefix = str(attrs.hlink_count)
             prefixs.append(prefix)
             if len(prefix) > max_lens[1]:
-                max_lens[2] = len(prefix)
+                max_lens[1] = len(prefix)
 
             prefix = pwd.getpwuid(attrs.user_id).pw_name
             prefixs.append(prefix)
-            if len(prefix) > max_lens[3]:
-                max_lens[3] = len(prefix)
+            if len(prefix) > max_lens[2]:
+                max_lens[2] = len(prefix)
 
             prefix = grp.getgrgid(attrs.group_id).gr_name
             prefixs.append(prefix)
-            if len(prefix) > max_lens[4]:
-                max_lens[4] = len(prefix)
+            if len(prefix) > max_lens[3]:
+                max_lens[3] = len(prefix)
 
             prefix = '' 
             if not HUMAN_READABLE:
@@ -117,21 +117,21 @@ def print_long_list_fmt(lines):
                     if log < 3: 
                         prefix += str(attrs.size) + 'B'
                     elif log < 6:
-                        prefix += '%.3f' % (attrs.size / 1024) + 'KB'
+                        prefix += '%.1f' % (attrs.size / 1024) + 'KB'
                     elif log < 9:
-                        prefix += '%.3f' % (attrs.size / (1024 ** 2)) + 'MB'
+                        prefix += '%.1f' % (attrs.size / (1024 ** 2)) + 'MB'
                     else:
-                        prefix += '%.3f' % (attrs.size / (1024 ** 3)) + 'GB'
+                        prefix += '%.1f' % (attrs.size / (1024 ** 3)) + 'GB'
 
             prefixs.append(prefix)
-            if len(prefix) > max_lens[5]:
-                max_lens[5] = len(prefix)
+            if len(prefix) > max_lens[4]:
+                max_lens[4] = len(prefix)
             
             prefix = '' 
             prefix += time.strftime('%b %d %Y %H:%M', time.gmtime(attrs.last_modified))
             prefixs.append(prefix)
-            if len(prefix) > max_lens[6]:
-                max_lens[6] = len(prefix)
+            if len(prefix) > max_lens[5]:
+                max_lens[5] = len(prefix)
 
             prefix_strs.append(prefixs)
         else:
@@ -140,7 +140,7 @@ def print_long_list_fmt(lines):
     for prefixs, struct in zip(prefix_strs, lines):
         prefix = ''
         for p, max_len in zip(prefixs, max_lens):
-            prefix += p + ' '*(3 + max_len - len(p))
+            prefix += p + ' '*(2 + max_len - len(p))
         print(prefix + ' ' + struct.pretty_str)
 
 class bcolors:
