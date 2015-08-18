@@ -159,6 +159,7 @@ class bcolors:
     def no_col():
         '''Disables ANSI escape sequencies'''
         bcolors.HEADER = ''
+        bcolors.CYAN = ''
         bcolors.BLUE = ''
         bcolors.GREEN = ''
         bcolors.WARNING = ''
