@@ -8,24 +8,28 @@ Attempts to imitate ls in operation and arguments, but instead displays as a tre
 import os
 import time
 import math
+import stat
+import pwd
+import grp
 from docopt import docopt
 from collections import namedtuple
 
 def main():
-    doc = """
-    Usage:
-        lt [--color=<when>] [--max-depth=<depth>] [-aABhl] [<dir>]
-
-    Options: 
+    doc = '''
+Usage:
+    lt [--color=<when>] [--max-depth=<depth>] [-aABFhlR] [<dir>]
+Options: 
     <dir>                   Directory to read from 
     --color=<when>          Colorize the output, can be 'never', 'auto' or 'always' [default: always]
     --max-depth=<depth>     Maximum depth to branch to [default: 3]
     -a --all                Do not ignore entries starting with .
     -A --almost-all         Like -a except do not list implied . and ..
     -B --ignore-backups     Do not list entries ending with ~
+    -F --classify           Append indicator to entries
     -h --human-readable     With -l, print human-readable sizes
     -l                      Use long-list format
-"""
+    -R --no-recursive       Do not recursively print directories
+'''
     args = docopt(doc) 
     _main(**args)
 
@@ -38,6 +42,8 @@ def _main(**argv):
     global IGNORE_BACKUPS
     global LONG_LIST
     global HUMAN_READABLE
+    global NO_RECUR
+    global CLASSIFY
 
     MAX_DEPTH = int(argv['--max-depth'])
     COLOR_MODE = argv['--color']
@@ -55,32 +61,49 @@ def _main(**argv):
     IGNORE_BACKUPS = argv.get('--ignore-backups', False)
     HUMAN_READABLE = argv.get('--human-readable', False)
     LONG_LIST = argv.get('-l', False)
+    NO_RECUR = argv.get('--no-recursive', False)
+    CLASSIFY = argv.get('--classify', False)
 
-    lines = print_tree(os.path.realpath(cwd))
+    if COLOR_MODE == 'never':
+        bcolors.no_col()
+
     
     if LONG_LIST:
+        lines = print_tree(os.path.realpath(cwd))
         print_long_list_fmt(lines)
     else:
+        lines = print_tree(os.path.realpath(cwd))
         for struct in lines:
             print(struct.pretty_str)
 
 def print_long_list_fmt(lines):
     # generate prefixes
     prefix_strs = []
-    max_lens = [0,0,0]
+    max_lens = [0]*7
     for struct in lines:
         if struct.path:
             prefixs = []
             attrs = get_attributes(struct.path)
 
-            prefix = '' 
-            prefix += 'd' if attrs.isdir else '-'
-            prefix += 'x' if attrs.executable else '-'
-            prefix += 'r' if attrs.readable else '-'
-            prefix += 'w' if attrs.writeable else '-'
+            prefix = attrs.file_mode
             prefixs.append(prefix)
             if len(prefix) > max_lens[0]:
                 max_lens[0] = len(prefix)
+
+            prefix = str(attrs.hlink_count)
+            prefixs.append(prefix)
+            if len(prefix) > max_lens[1]:
+                max_lens[2] = len(prefix)
+
+            prefix = pwd.getpwuid(attrs.user_id).pw_name
+            prefixs.append(prefix)
+            if len(prefix) > max_lens[3]:
+                max_lens[3] = len(prefix)
+
+            prefix = grp.getgrgid(attrs.group_id).gr_name
+            prefixs.append(prefix)
+            if len(prefix) > max_lens[4]:
+                max_lens[4] = len(prefix)
 
             prefix = '' 
             if not HUMAN_READABLE:
@@ -100,14 +123,14 @@ def print_long_list_fmt(lines):
                         prefix += '%.3f' % (attrs.size / (1024 ** 3)) + 'GB'
 
             prefixs.append(prefix)
-            if len(prefix) > max_lens[0]:
-                max_lens[1] = len(prefix)
+            if len(prefix) > max_lens[5]:
+                max_lens[5] = len(prefix)
             
             prefix = '' 
             prefix += time.strftime('%b %d %Y %H:%M', time.gmtime(attrs.last_modified))
             prefixs.append(prefix)
-            if len(prefix) > max_lens[2]:
-                max_lens[2] = len(prefix)
+            if len(prefix) > max_lens[6]:
+                max_lens[6] = len(prefix)
 
             prefix_strs.append(prefixs)
         else:
@@ -117,29 +140,60 @@ def print_long_list_fmt(lines):
         prefix = ''
         for p, max_len in zip(prefixs, max_lens):
             prefix += p + ' '*(3 + max_len - len(p))
-        print(prefix + struct.pretty_str)
+        print(prefix + ' ' + struct.pretty_str)
 
 class bcolors:
     '''ANSI escape sequences'''
     HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
+    CYAN = '\033[36m'
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
     WARNING = '\033[93m'
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-Attributes = namedtuple('FileAttributes', ['size', 'isdir', 'executable', 'readable', 'writeable', 'last_modified'])
+    @staticmethod
+    def no_col():
+        '''Disables ANSI escape sequencies'''
+        bcolors.HEADER = ''
+        bcolors.BLUE = ''
+        bcolors.GREEN = ''
+        bcolors.WARNING = ''
+        bcolors.FAIL = ''
+        bcolors.ENDC = ''
+        bcolors.BOLD = ''
+        bcolors.UNDERLINE = ''
+
+
+Attributes = namedtuple('FileAttributes', ['size', 
+                                            'executable', 
+                                            'file_mode',
+                                            'islink',
+                                            'ispipe',
+                                            'isdoor',
+                                            'issock',
+                                            'hlink_count',
+                                            'user_id',
+                                            'group_id',
+                                            'last_modified'])
 
 def get_attributes(path):
+    st = os.stat(path)
+
     return Attributes(
-        os.path.getsize(path), 
-        os.path.isdir(path),
+        st.st_size,
         os.access(path, os.X_OK),
-        os.access(path, os.R_OK),
-        os.access(path, os.W_OK),
-        os.path.getmtime(path)
+        stat.filemode(st.st_mode),
+        os.path.islink(path),
+        stat.S_ISFIFO(st.st_mode),
+        stat.S_ISDOOR(st.st_mode),
+        stat.S_ISSOCK(st.st_mode),
+        st.st_nlink,
+        st.st_uid,
+        st.st_gid,
+        st.st_mtime
     )
 
 def get_print_string_file(path, indent=''):
@@ -156,13 +210,21 @@ def get_print_string_file(path, indent=''):
     attr = get_attributes(path)
 
     if attr.executable:
-        col = bcolors.BOLD + bcolors.OKGREEN
+        col = bcolors.BOLD + bcolors.GREEN
         x += '*'
-
-    if COLOR_MODE == 'always' or COLOR_MODE == 'auto':
-        s += col + f + bcolors.ENDC + bcolors.BOLD + x + bcolors.ENDC
-    else:
-        s += f + x
+    if attr.islink:
+        col = bcolors.BOLD + bcolors.CYAN
+        x += '@'
+    if attr.isdoor:
+        x += '>'
+    if attr.issock:
+        x += '='
+    if attr.ispipe:
+        x += '|'
+            
+    s += col + f + bcolors.ENDC
+    if CLASSIFY:
+        s += bcolors.BOLD + x + bcolors.ENDC
 
     return s
 
@@ -174,46 +236,70 @@ def get_print_string_dir(path, indent=''):
     s = indent
     d = os.path.basename(path)
 
+    x = ''
+
     attr = get_attributes(path)
+    col = bcolors.BOLD + bcolors.BLUE
 
-    col = bcolors.BOLD + bcolors.OKBLUE
+    if attr.islink:
+        col = bcolors.BOLD + bcolors.CYAN
+        x += '@'
+    if attr.isdoor:
+        x += '>'
+    if attr.issock:
+        x += '='
+    if attr.ispipe:
+        x += '|'
+    
+    if x == '':
+        x += '/'
 
-    if COLOR_MODE == 'always' or COLOR_MODE == 'auto':
-        s += col + d + bcolors.ENDC + '/'
-    else:
-        s += d + '/'
+    s += col + d + bcolors.ENDC
+
+    if CLASSIFY:
+        s += x
 
     return s
 
 PrettyStruct = namedtuple('File', ['pretty_str', 'path'])
 
-def print_tree(wd, level=0):
+def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
     '''Returns pretty-prints tree structure starting at 'wd' i.e.:
         wd/
-        |--- file1
-        |--- file2
-        |--- dir/
-            |---- ...
-        |--- .../
+          |-- file1
+          |-- file2*
+          |-- dir@
+          |-- |-- file3
+          |-- |-- file4*
+          |-- other_dir/
+              |-- file5
+              |-- file5
 
     on each dir the level increases by 1
     '''
     lines = []
 
-    pre_indent = ' '*2*level
-    post_indent = ' '*2*(level + 1)
+    # take indent up to this level and add a single level of indent
+    if not last_dir and level > 0: 
+        post_indent = indent + '|' + indent_char*2
+    else:
+        post_indent = indent + indent_char*2
     
-    s = get_print_string_dir(wd, indent=pre_indent)
+    s = get_print_string_dir(wd, indent=indent + '|-- ')
     lines.append(PrettyStruct(s, wd)) 
 
     if level == MAX_DEPTH:
-        lines.append(PrettyStruct(post_indent + '|-- ...', None))
+        return lines
+
+    # with NO_RECUR flag only write top-level directory contents
+    if NO_RECUR and level > 0:
         return lines
 
     files = [] 
     dirs = [] 
 
     for f in os.listdir(wd):
+
         if f.startswith('.'):
             if LIST_ALL == 0:
                 continue
@@ -222,7 +308,7 @@ def print_tree(wd, level=0):
             if IGNORE_BACKUPS:
                 continue
 
-        fs = os.path.realpath(wd + '/' + f)
+        fs = wd + '/' + f
         if os.path.isdir(fs):
             dirs.append(fs)
         elif os.path.isfile(fs):
@@ -237,7 +323,14 @@ def print_tree(wd, level=0):
         lines.append(PrettyStruct(s, f))
 
     for d in dirs:
-        lines.extend(print_tree(os.path.realpath(d), level=level+1))
+        last = False
+        if d == dirs[-1]:
+            last = True
+        lines.extend(print_tree(d,
+                                level=level+1,
+                                indent=post_indent,
+                                indent_char=indent_char,
+                                last_dir=last))
 
     if len(dirs) == 0 and len(files) == 0:
         lines.append(PrettyStruct(post_indent + '|-- ..', None))
