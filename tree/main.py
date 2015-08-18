@@ -300,21 +300,24 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
     files = [] 
     dirs = [] 
 
-    for f in os.listdir(wd):
+    try:
+        for f in os.listdir(wd):
+            if f.startswith('.'):
+                if LIST_ALL == 0:
+                    continue
+            
+            if f.endswith('~'):
+                if IGNORE_BACKUPS:
+                    continue
 
-        if f.startswith('.'):
-            if LIST_ALL == 0:
-                continue
-        
-        if f.endswith('~'):
-            if IGNORE_BACKUPS:
-                continue
+            fs = wd + '/' + f
+            if os.path.isdir(fs):
+                dirs.append(fs)
+            elif os.path.isfile(fs):
+                files.append(fs)
+    except PermissionError:
+        return lines
 
-        fs = wd + '/' + f
-        if os.path.isdir(fs):
-            dirs.append(fs)
-        elif os.path.isfile(fs):
-            files.append(fs)
 
     if LIST_ALL == 2:
         lines.append(PrettyStruct(post_indent + '|-- .', None))
