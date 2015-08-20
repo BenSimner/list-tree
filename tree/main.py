@@ -287,7 +287,7 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
     else:
         post_indent = indent + indent_char*2
     
-    s = get_print_string_dir(wd, indent=indent + '|-- ')
+    s = get_print_string_dir(wd, indent=indent + '+-- ')
     lines.append(PrettyStruct(s, wd)) 
 
     if level == MAX_DEPTH:
