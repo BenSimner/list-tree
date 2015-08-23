@@ -248,7 +248,7 @@ def get_print_string_file(path, indent=''):
             
     s += col + f + bcolors.ENDC
     if CLASSIFY:
-        s += bcolors.BOLD + x + bcolors.ENDC
+        s += x + bcolors.ENDC
 
     return s
 
