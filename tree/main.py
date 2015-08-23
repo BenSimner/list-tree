@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # main.py - Entry-point for `list-tree'
 # author: Ben Simner 
 '''Implements list-tree
@@ -9,15 +10,16 @@ import os
 import time
 import math
 import stat
-import pwd
+import pwd 
 import grp
+import subprocess
 from docopt import docopt
 from collections import namedtuple
 
 def main():
     doc = '''
 Usage:
-    lt [-aABFhlR --color=<when> --max-depth=<depth>] [<dir>]
+    lt [-aABFghlR --color=<when> --max-depth=<depth>] [<dir>]
 
 Options: 
     <dir>                   Directory to read from 
@@ -27,6 +29,7 @@ Options:
     -A --almost-all         Like -a except do not list implied . and ..
     -B --ignore-backups     Do not list entries ending with ~
     -F --classify           Append indicator to entries
+    -g --gitignore          Respect .gitignore and don't print out ignored files
     -h --human-readable     With -l, print human-readable sizes
     -l                      Use long-list format
     -R --no-recursive       Do not recursively print directories
@@ -45,6 +48,8 @@ def _main(**argv):
     global HUMAN_READABLE
     global NO_RECUR
     global CLASSIFY
+    global RESPECT_GITIGNORE
+
 
     MAX_DEPTH = int(argv['--max-depth'])
     COLOR_MODE = argv['--color']
@@ -64,6 +69,7 @@ def _main(**argv):
     LONG_LIST = argv.get('-l', False)
     NO_RECUR = argv.get('--no-recursive', False)
     CLASSIFY = argv.get('--classify', False)
+    RESPECT_GITIGNORE = argv.get('--gitignore', False)
 
     if COLOR_MODE == 'never':
         bcolors.no_col()
@@ -195,8 +201,24 @@ def get_attributes(path):
         st.st_nlink,
         st.st_uid,
         st.st_gid,
-        st.st_mtime
+        st.st_mtime,
     )
+
+def file_ignored(path):
+    '''Returns `True` if file on 'path' is ignored by source control software
+    i.e. disallowed by .gitignore files
+    '''
+
+    try:
+        p = subprocess.Popen(['git', 'check-ignore', '-q', path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        exitcode = p.wait()
+        if exitcode == 0:
+            return True
+        return False
+    except:
+        # assume out of repo
+        # or not-found git
+        return False
 
 def get_print_string_file(path, indent=''):
     '''returns the printstring for some file with realpath 'path'
@@ -311,6 +333,11 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
                     continue
 
             fs = wd + '/' + f
+
+            if RESPECT_GITIGNORE: 
+                if file_ignored(fs):
+                    continue
+
             if os.path.isdir(fs):
                 dirs.append(fs)
             elif os.path.isfile(fs):
