@@ -24,10 +24,10 @@ Usage:
 Options: 
     <dir>                   Directory to read from 
     --color=<when>          Colorize the output, can be 'never', 'auto' or 'always' [default: always]
-    --max-depth=<depth>     Maximum depth to branch to [default: 3]
     -a --all                Do not ignore entries starting with .
     -A --almost-all         Like -a except do not list implied . and ..
     -B --ignore-backups     Do not list entries ending with ~
+    -d --max-depth=<depth>  Maximum depth to branch to [default: 2]
     -F --classify           Append indicator to entries
     -g --gitignore          Respect .gitignore and don't print out ignored files
     -h --human-readable     With -l, print human-readable sizes
