@@ -84,70 +84,41 @@ def _main(**argv):
             print(struct.pretty_str)
 
 def print_long_list_fmt(lines):
-    # generate prefixes
-    prefix_strs = []
-    max_lens = [0]*6
+    '''Prints a long-list format given by generator 'lines'
+
+    in format [drwxrwxrwx](10) [hlink_count](3) [user_id](5) [group_id](5) [size](10) [time](15) [pretty_str](...)
+    '''
+
     for struct in lines:
-        if struct.path:
-            prefixs = []
-            attrs = get_attributes(struct.path)
+        attrs = get_attributes(struct.path)
+        line = []
 
-            prefix = attrs.file_mode
-            prefixs.append(prefix)
-            if len(prefix) > max_lens[0]:
-                max_lens[0] = len(prefix)
+        line.append(attrs.file_mode.ljust(11))
+        line.append(str(attrs.hlink_count).ljust(3))
+        line.append(str(attrs.user_id).ljust(5))
+        line.append(str(attrs.group_id).ljust(5))
 
-            prefix = str(attrs.hlink_count)
-            prefixs.append(prefix)
-            if len(prefix) > max_lens[1]:
-                max_lens[1] = len(prefix)
-
-            prefix = pwd.getpwuid(attrs.user_id).pw_name
-            prefixs.append(prefix)
-            if len(prefix) > max_lens[2]:
-                max_lens[2] = len(prefix)
-
-            prefix = grp.getgrgid(attrs.group_id).gr_name
-            prefixs.append(prefix)
-            if len(prefix) > max_lens[3]:
-                max_lens[3] = len(prefix)
-
-            prefix = '' 
-            if not HUMAN_READABLE:
-                prefix += str(attrs.size) + 'B'
-            else:
-                if attrs.size <= 0:
-                    prefix += '0B'
-                else: 
-                    log = round(math.log(attrs.size, 10))
-                    if log < 3: 
-                        prefix += str(attrs.size) + 'B'
-                    elif log < 6:
-                        prefix += '%.1f' % (attrs.size / 1024) + 'KB'
-                    elif log < 9:
-                        prefix += '%.1f' % (attrs.size / (1024 ** 2)) + 'MB'
-                    else:
-                        prefix += '%.1f' % (attrs.size / (1024 ** 3)) + 'GB'
-
-            prefixs.append(prefix)
-            if len(prefix) > max_lens[4]:
-                max_lens[4] = len(prefix)
-            
-            prefix = '' 
-            prefix += time.strftime('%b %d %Y %H:%M', time.gmtime(attrs.last_modified))
-            prefixs.append(prefix)
-            if len(prefix) > max_lens[5]:
-                max_lens[5] = len(prefix)
-
-            prefix_strs.append(prefixs)
+        size = ''
+        if not HUMAN_READABLE:
+            size = str(attrs.size) + 'B'
         else:
-            prefix_strs.append(['', '', ''])
+            if attrs.size <= 0:
+                size = '0B'
+            else:
+                log = round(math.log(attrs.size, 10))
+                if log < 3:
+                    size = str(attrs.size) + 'B'
+                elif log < 6:
+                    size = '%.1f' % (attrs.size / 1024) + 'KB'
+                elif log < 9:
+                    size = '%.1f' % (attrs.size / (1024 ** 2)) + 'MB'
+                else:
+                    size = '%.1f' % (attrs.size / (1024 ** 3)) + 'GB'
+        line.append(size.ljust(10))
+        line.append(time.strftime('%b %d %Y %H:%M', time.gmtime(attrs.last_modified)).ljust(15))
+        line.append(struct.pretty_str)
 
-    for prefixs, struct in zip(prefix_strs, lines):
-        prefix = ''
-        for p, max_len in zip(prefixs, max_lens):
-            prefix += p + ' '*(2 + max_len - len(p))
-        print(prefix + ' ' + struct.pretty_str)
+        print(' '.join(line))
 
 class bcolors:
     '''ANSI escape sequences'''
@@ -288,7 +259,7 @@ def get_print_string_dir(path, indent=''):
 PrettyStruct = namedtuple('File', ['pretty_str', 'path'])
 
 def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
-    '''Returns pretty-prints tree structure starting at 'wd' i.e.:
+    '''Returns a generator represneting  pretty-prints tree structure starting at 'wd' i.e.:
         wd/
           |-- file1
           |-- file2*
@@ -301,7 +272,6 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
 
     on each dir the level increases by 1
     '''
-    lines = []
 
     # take indent up to this level and add a single level of indent
     if not last_dir and level > 0: 
@@ -310,14 +280,14 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
         post_indent = indent + indent_char*2
     
     s = get_print_string_dir(wd, indent=indent + '+-- ')
-    lines.append(PrettyStruct(s, wd)) 
+    yield PrettyStruct(s, wd)
 
     if level == MAX_DEPTH:
-        return lines
+        raise StopIteration
 
     # with NO_RECUR flag only write top-level directory contents
     if NO_RECUR and level > 0:
-        return lines
+        raise StopIteration
 
     files = [] 
     dirs = [] 
@@ -343,28 +313,26 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
             elif os.path.isfile(fs):
                 files.append(fs)
     except PermissionError:
-        return lines
+        raise StopIteration
 
 
     if LIST_ALL == 2:
-        lines.append(PrettyStruct(post_indent + '|-- .', None))
-        lines.append(PrettyStruct(post_indent + '|-- ..', None))
+        yield PrettyStruct(post_indent + '|-- .', None)
+        yield PrettyStruct(post_indent + '|-- ..', None)
 
     for f in files:
         s = get_print_string_file(f, indent=post_indent)
-        lines.append(PrettyStruct(s, f))
+        yield PrettyStruct(s, f)
 
     for d in dirs:
         last = False
         if d == dirs[-1]:
             last = True
-        lines.extend(print_tree(d,
-                                level=level+1,
-                                indent=post_indent,
-                                indent_char=indent_char,
-                                last_dir=last))
+        yield from print_tree(d,
+                            level=level+1,
+                            indent=post_indent,
+                            indent_char=indent_char,
+                            last_dir=last)
 
     if len(dirs) == 0 and len(files) == 0:
-        lines.append(PrettyStruct(post_indent + '|-- ..', None))
-    
-    return lines
+        yield PrettyStruct(post_indent + '|-- ..', None)
