@@ -1,29 +1,14 @@
 #!/usr/bin/env python3
 # main.py - Entry-point for `list-tree'
-# author: Ben Simner 
-'''Implements list-tree
+# author: Ben Simner
+'''list-tree
 
-Attempts to imitate ls in operation and arguments, but instead displays as a tree-view
-'''
-
-import os
-import time
-import math
-import stat
-import pwd 
-import grp
-import subprocess
-from docopt import docopt
-from collections import namedtuple
-
-def main():
-    doc = '''
 Usage:
-    lt [-aABFghlR --color=<when> --max-depth=<depth>] [<dir>]
+    lt [options] [<dir>]
 
-Options: 
-    <dir>                   Directory to read from 
-    --color=<when>          Colorize the output, can be 'never', 'auto' or 'always' [default: always]
+Options:
+    <dir>                   Directory to read from
+    -c --color=<when>          Colorize the output, can be 'never', 'auto' or 'always' [default: always]
     -a --all                Do not ignore entries starting with .
     -A --almost-all         Like -a except do not list implied . and ..
     -B --ignore-backups     Do not list entries ending with ~
@@ -34,7 +19,17 @@ Options:
     -l                      Use long-list format
     -R --no-recursive       Do not recursively print directories
 '''
-    args = docopt(doc) 
+
+import os
+import time
+import math
+import stat
+import subprocess
+from docopt import docopt
+from collections import namedtuple
+
+def main():
+    args = docopt(__doc__)
     _main(**args)
 
 def _main(**argv):
@@ -42,14 +37,13 @@ def _main(**argv):
 
     global MAX_DEPTH
     global COLOR_MODE
-    global LIST_ALL 
+    global LIST_ALL
     global IGNORE_BACKUPS
     global LONG_LIST
     global HUMAN_READABLE
     global NO_RECUR
     global CLASSIFY
     global RESPECT_GITIGNORE
-
 
     MAX_DEPTH = int(argv['--max-depth'])
     COLOR_MODE = argv['--color']
@@ -74,7 +68,6 @@ def _main(**argv):
     if COLOR_MODE == 'never':
         bcolors.no_col()
 
-    
     if LONG_LIST:
         lines = print_tree(os.path.realpath(cwd))
         print_long_list_fmt(lines)
@@ -146,17 +139,21 @@ class bcolors:
         bcolors.UNDERLINE = ''
 
 
-Attributes = namedtuple('FileAttributes', ['size', 
-                                            'executable', 
-                                            'file_mode',
-                                            'islink',
-                                            'ispipe',
-                                            'isdoor',
-                                            'issock',
-                                            'hlink_count',
-                                            'user_id',
-                                            'group_id',
-                                            'last_modified'])
+Attributes = namedtuple(
+    'FileAttributes',
+    [
+        'size',
+        'executable',
+        'file_mode',
+        'islink',
+        'ispipe',
+        'isdoor',
+        'issock',
+        'hlink_count',
+        'user_id',
+        'group_id',
+        'last_modified'
+    ])
 
 def get_attributes(path):
     st = os.stat(path)
@@ -193,7 +190,7 @@ def file_ignored(path):
 
 def get_print_string_file(path, indent=''):
     '''returns the printstring for some file with realpath 'path'
-    includes ANSI color tags 
+    includes ANSI color tags
     given some indent
     '''
     s = indent + '|-- '
@@ -216,7 +213,7 @@ def get_print_string_file(path, indent=''):
         x += '='
     if attr.ispipe:
         x += '|'
-            
+
     s += col + f + bcolors.ENDC
     if CLASSIFY:
         s += x + bcolors.ENDC
@@ -225,7 +222,7 @@ def get_print_string_file(path, indent=''):
 
 def get_print_string_dir(path, indent=''):
     '''returns the printstring for some dir with realpath 'path'
-    includes ANSI color tags 
+    includes ANSI color tags
     given some indent
     '''
     s = indent
@@ -245,7 +242,7 @@ def get_print_string_dir(path, indent=''):
         x += '='
     if attr.ispipe:
         x += '|'
-    
+
     if x == '':
         x += '/'
 
@@ -274,11 +271,11 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
     '''
 
     # take indent up to this level and add a single level of indent
-    if not last_dir and level > 0: 
-        post_indent = indent + '|' + indent_char*2
+    if not last_dir and level > 0:
+        post_indent = indent + '|' + indent_char * 2
     else:
-        post_indent = indent + indent_char*2
-    
+        post_indent = indent + indent_char * 2
+
     s = get_print_string_dir(wd, indent=indent + '+-- ')
     yield PrettyStruct(s, wd)
 
@@ -289,22 +286,22 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
     if NO_RECUR and level > 0:
         raise StopIteration
 
-    files = [] 
-    dirs = [] 
+    files = []
+    dirs = []
 
     try:
         for f in os.listdir(wd):
             if f.startswith('.'):
                 if LIST_ALL == 0:
                     continue
-            
+
             if f.endswith('~'):
                 if IGNORE_BACKUPS:
                     continue
 
             fs = wd + '/' + f
 
-            if RESPECT_GITIGNORE: 
+            if RESPECT_GITIGNORE:
                 if file_ignored(fs):
                     continue
 
@@ -314,7 +311,6 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
                 files.append(fs)
     except PermissionError:
         raise StopIteration
-
 
     if LIST_ALL == 2:
         yield PrettyStruct(post_indent + '|-- .', None)
@@ -328,11 +324,15 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
         last = False
         if d == dirs[-1]:
             last = True
-        yield from print_tree(d,
-                            level=level+1,
-                            indent=post_indent,
-                            indent_char=indent_char,
-                            last_dir=last)
+        yield from print_tree(
+            d,
+            level=level + 1,
+            indent=post_indent,
+            indent_char=indent_char,
+            last_dir=last)
 
     if len(dirs) == 0 and len(files) == 0:
         yield PrettyStruct(post_indent + '|-- ..', None)
+
+if __name__ == '__main__':
+    main()  # for testing
