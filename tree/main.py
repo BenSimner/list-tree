@@ -28,6 +28,12 @@ import subprocess
 from docopt import docopt
 from collections import namedtuple
 
+class Symbols:
+    CROSS = '+'
+    VLINE = '|'
+    VLINER = '|'
+    HLINE = '-'
+
 def main():
     args = docopt(__doc__)
     _main(**args)
@@ -68,19 +74,33 @@ def _main(**argv):
     if COLOR_MODE == 'never':
         bcolors.no_col()
 
+    try:
+        get_attributes(cwd)
+    except FileNotFoundError:
+        head, d = os.path.split(os.path.abspath(cwd))
+        s = '{}{}{}/'.format(bcolors.BLUE + bcolors.BOLD, d, bcolors.ENDC)
+        print('{} not found'.format(s))
+        return
+
     if LONG_LIST:
         lines = print_tree(os.path.realpath(cwd))
         print_long_list_fmt(lines)
     else:
         lines = print_tree(os.path.realpath(cwd))
+        pretty = struct_prettifier()
+        next(pretty)
+
         for struct in lines:
-            print(struct.pretty_str)
+            print(pretty.send(struct))
 
 def print_long_list_fmt(lines):
     '''Prints a long-list format given by generator 'lines'
 
     in format [drwxrwxrwx](10) [hlink_count](3) [user_id](5) [group_id](5) [size](10) [time](15) [pretty_str](...)
     '''
+
+    pretty = struct_prettifier()
+    next(pretty)
 
     for struct in lines:
         attrs = get_attributes(struct.path)
@@ -109,9 +129,44 @@ def print_long_list_fmt(lines):
                     size = '%.1f' % (attrs.size / (1024 ** 3)) + 'GB'
         line.append(size.ljust(10))
         line.append(time.strftime('%b %d %Y %H:%M', time.gmtime(attrs.last_modified)).ljust(15))
-        line.append(struct.pretty_str)
+        line.append(pretty.send(struct))
 
         print(' '.join(line))
+
+def struct_prettifier():
+    s = ''
+    open_folds = []
+    while True:
+        struct = yield s
+
+        indent = ''
+        _opens = len(open_folds)
+
+        for i, x in enumerate(open_folds):
+            if i == _opens - 1:
+                if struct.directory:
+                    indent += ' ' * 2 + Symbols.CROSS
+                else:
+                    indent += ' ' * 2 + Symbols.VLINE
+            else:
+                indent += ' ' * 2 + Symbols.VLINE
+
+        # dropped out of directory
+        while open_folds:
+            last_open = open_folds[-1]
+            if struct.depth < last_open:
+                open_folds.pop()
+            else:
+                break
+
+        if struct.directory:
+            # jumped into directory
+            if not open_folds or open_folds[-1] != struct.depth - 1:
+                open_folds.append(struct.depth + 1)
+
+        s = '{}{} {}'.format(indent, Symbols.HLINE * 2, struct.name)
+        if struct.permission_failure:
+            s += ' {}[PermissionDenied]{}'.format(bcolors.BOLD + bcolors.FAIL, bcolors.ENDC)
 
 class bcolors:
     '''ANSI escape sequences'''
@@ -193,7 +248,6 @@ def get_print_string_file(path, indent=''):
     includes ANSI color tags
     given some indent
     '''
-    s = indent + '|-- '
     f = os.path.basename(path)
 
     col = ''
@@ -214,18 +268,17 @@ def get_print_string_file(path, indent=''):
     if attr.ispipe:
         x += '|'
 
-    s += col + f + bcolors.ENDC
+    s = col + f + bcolors.ENDC
     if CLASSIFY:
         s += x + bcolors.ENDC
 
     return s
 
-def get_print_string_dir(path, indent=''):
+def get_print_string_dir(path):
     '''returns the printstring for some dir with realpath 'path'
     includes ANSI color tags
     given some indent
     '''
-    s = indent
     d = os.path.basename(path)
 
     x = ''
@@ -246,16 +299,16 @@ def get_print_string_dir(path, indent=''):
     if x == '':
         x += '/'
 
-    s += col + d + bcolors.ENDC
+    s = col + d + bcolors.ENDC
 
     if CLASSIFY:
         s += x
 
     return s
 
-PrettyStruct = namedtuple('File', ['pretty_str', 'path'])
+File = namedtuple('File', ['name', 'depth', 'directory', 'permission_failure', 'path'])
 
-def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
+def print_tree(wd, depth=0, last_dir=False):
     '''Returns a generator represneting  pretty-prints tree structure starting at 'wd' i.e.:
         wd/
           |-- file1
@@ -270,29 +323,25 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
     on each dir the level increases by 1
     '''
 
-    # take indent up to this level and add a single level of indent
-    if not last_dir and level > 0:
-        post_indent = indent + '|' + indent_char * 2
-    else:
-        post_indent = indent + indent_char * 2
+    s = get_print_string_dir(wd)
 
-    s = get_print_string_dir(wd, indent=indent + '+-- ')
-    yield PrettyStruct(s, wd)
-
-    if level == MAX_DEPTH:
+    if depth == MAX_DEPTH:
         raise StopIteration
 
     # with NO_RECUR flag only write top-level directory contents
-    if NO_RECUR and level > 0:
+    if NO_RECUR and depth > 0:
         raise StopIteration
 
     files = []
     dirs = []
 
     try:
-        for f in os.listdir(wd):
+        l = os.listdir(wd)
+        yield File(s, depth, True, False, wd)
+
+        for f in l:
             if f.startswith('.'):
-                if LIST_ALL == 0:
+                if not LIST_ALL:
                     continue
 
             if f.endswith('~'):
@@ -310,29 +359,24 @@ def print_tree(wd, level=0, indent='', indent_char=' ', last_dir=False):
             elif os.path.isfile(fs):
                 files.append(fs)
     except PermissionError:
+        yield File(s, depth, True, True, wd)
         raise StopIteration
 
     if LIST_ALL == 2:
-        yield PrettyStruct(post_indent + '|-- .', None)
-        yield PrettyStruct(post_indent + '|-- ..', None)
+        yield File('.', depth + 1, True, False, wd)
+        yield File('..', depth + 1, True, False, wd)
 
     for f in files:
-        s = get_print_string_file(f, indent=post_indent)
-        yield PrettyStruct(s, f)
+        s = get_print_string_file(f)
+        yield File(s, depth + 1, False, False, f)
 
     for d in dirs:
-        last = False
-        if d == dirs[-1]:
-            last = True
         yield from print_tree(
             d,
-            level=level + 1,
-            indent=post_indent,
-            indent_char=indent_char,
-            last_dir=last)
+            depth=depth + 1)
 
-    if len(dirs) == 0 and len(files) == 0:
-        yield PrettyStruct(post_indent + '|-- ..', None)
+    if len(dirs) == 0 and len(files) == 0 and not LIST_ALL:
+        yield File('..', depth + 1, True, False, wd)
 
 if __name__ == '__main__':
     main()  # for testing
