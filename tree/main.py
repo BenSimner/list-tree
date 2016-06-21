@@ -135,34 +135,12 @@ def print_long_list_fmt(lines):
 
 def struct_prettifier():
     s = ''
-    open_folds = []
     while True:
         struct = yield s
 
-        indent = ''
-        _opens = len(open_folds)
-
-        for i, x in enumerate(open_folds):
-            if i == _opens - 1:
-                if struct.directory:
-                    indent += ' ' * 2 + Symbols.CROSS
-                else:
-                    indent += ' ' * 2 + Symbols.VLINE
-            else:
-                indent += ' ' * 2 + Symbols.VLINE
-
-        # dropped out of directory
-        while open_folds:
-            last_open = open_folds[-1]
-            if struct.depth < last_open:
-                open_folds.pop()
-            else:
-                break
-
+        indent = (' ' * 2 + Symbols.VLINE) * struct.depth
         if struct.directory:
-            # jumped into directory
-            if not open_folds or open_folds[-1] != struct.depth - 1:
-                open_folds.append(struct.depth + 1)
+            indent = ''.join([indent[:-1], '+'])
 
         s = '{}{} {}'.format(indent, Symbols.HLINE * 2, struct.name)
         if struct.permission_failure:
